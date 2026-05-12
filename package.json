@@ -1,15 +1,11 @@
 {
-  "name": "chairs-game-bot",
+  "name": "legendary-chairs-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for Chairs Game - لعبة الكراسي",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3"
-  },
-  "engines": {
-    "node": ">=18"
   }
 }
