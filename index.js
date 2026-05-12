@@ -11,27 +11,19 @@ function save() {
     fs.writeFileSync('./data.json', JSON.stringify(db, null, 2));
 }
 
-function user(id, name) {
+function user(id, name, photo) {
 
     if (!db[id]) {
         db[id] = {
             name,
-            coins: 100,
-            xp: 0,
-            level: 1,
-            wins: 0,
+            photo: photo || null,
             games: 0,
-            lastDaily: 0,
-            skill: "normal"
+            wins: 0
         };
     }
 
     return db[id];
 }
-
-/* ================= TOURNAMENT SYSTEM ================= */
-
-const tournaments = new Map();
 
 /* ================= ROOM ================= */
 
@@ -42,107 +34,103 @@ function room(chatId) {
     if (!rooms.has(chatId)) {
         rooms.set(chatId, {
             players: new Map(),
-            seated: new Set(),
-            round: 0,
-            msgId: null
+            seated: new Set()
         });
     }
 
     return rooms.get(chatId);
 }
 
-/* ================= SKILLS ================= */
+/* ================= كراسي (CARD UI) ================= */
 
-function randomSkill() {
-
-    const skills = ["FAST", "LUCKY", "SHIELD"];
-
-    return skills[Math.floor(Math.random() * skills.length)];
-}
-
-/* ================= JOIN ================= */
-
-bot.hears('كراسي', (ctx) => {
+bot.hears('كراسي', async (ctx) => {
 
     const r = room(ctx.chat.id);
 
-    const u = user(ctx.from.id, ctx.from.first_name);
+    const u = user(
+        ctx.from.id,
+        ctx.from.first_name,
+        ctx.from.photo
+    );
 
     r.players.set(ctx.from.id, u.name);
 
-    ctx.reply(
-`🎮 PLAYER JOINED
+    await ctx.reply(
+`🪑━━━━━━━━━━━━━━🪑
+      🎮 GAME CARD
+🪑━━━━━━━━━━━━━━🪑
 
-👤 ${u.name}
-👥 ${r.players.size}`
-    );
+👤 الاسم: ${u.name}
+👥 اللاعبين: ${r.players.size}
+
+اضغط للانضمام 👇`,
+{
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: "🪑 دخول اللعبة", callback_data: "join" }]
+        ]
+    }
+});
 });
 
-/* ================= DAILY QUEST ================= */
+/* ================= PROFILE CARD ================= */
 
-bot.hears('مهمة', (ctx) => {
+bot.hears('بروفايل', async (ctx) => {
 
     const u = user(ctx.from.id, ctx.from.first_name);
 
-    ctx.reply(
-`🎯 DAILY QUEST
+    const text =
+`👤━━━━━━━━━━━━━━👤
+      📊 PROFILE CARD
+👤━━━━━━━━━━━━━━👤
 
-🎮 العب مباراة → +50 XP
-🏆 فز → +100 COINS`
-    );
+👤 الاسم: ${u.name}
+🎮 مباريات: ${u.games}
+🏆 فوز: ${u.wins}`;
+
+    if (ctx.from.photo) {
+
+        const photos = await ctx.telegram.getUserProfilePhotos(ctx.from.id);
+
+        const file = photos.photos?.[0]?.[0]?.file_id;
+
+        if (file) {
+
+            return ctx.replyWithPhoto(file, {
+                caption: text
+            });
+        }
+    }
+
+    ctx.reply(text);
 });
 
-/* ================= SHOP ================= */
+/* ================= CHALLENGES ================= */
 
-bot.hears('متجر', (ctx) => {
-
-    ctx.reply(
-`🛒 SHOP
-
-⚡ BOOST (x2 coins)
-🪑 SKIN (chair effects)
-
-اكتب: شراء`
-    );
-});
-
-bot.hears('شراء', (ctx) => {
-
-    const u = user(ctx.from.id, ctx.from.first_name);
-
-    if (u.coins < 100)
-        return ctx.reply("❌ مش معاك كوينز");
-
-    u.coins -= 100;
-    u.skill = randomSkill();
-
-    save();
-
-    ctx.reply(`✨ حصلت على مهارة: ${u.skill}`);
-});
-
-/* ================= TOURNAMENT ================= */
-
-bot.hears('بطولة', (ctx) => {
-
-    const t = tournaments.get(ctx.chat.id) || {
-        players: new Map()
-    };
-
-    tournaments.set(ctx.chat.id, t);
-
-    t.players.set(ctx.from.id, ctx.from.first_name);
+bot.hears('تحدي', (ctx) => {
 
     ctx.reply(
-`🏆 TOURNAMENT
+`🎯━━━━━━━━━━━━━━🎯
+        CHALLENGES
+🎯━━━━━━━━━━━━━━🎯
 
-👥 ${t.players.size} لاعبين`
-    );
+1️⃣ اللي يخسر يقول: "أنا مره 😭"
+2️⃣ اللي يخسر ميكسبش 10 دقايق ⛔
+
+اختر التحدي 👇`,
+{
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: "😂 التحدي الأول", callback_data: "c1" }],
+            [{ text: "⛔ التحدي الثاني", callback_data: "c2" }]
+        ]
+    }
+});
 });
 
-/* ================= START ================= */
+/* ================= GAME ================= */
 
-bot.hears('ابدأ', async (ctx) => {
+bot.hears('العب', async (ctx) => {
 
     const r = room(ctx.chat.id);
 
@@ -152,7 +140,7 @@ bot.hears('ابدأ', async (ctx) => {
     startGame(ctx, r);
 });
 
-/* ================= CINEMATIC GAME ================= */
+/* ================= GAME START ================= */
 
 async function startGame(ctx, r) {
 
@@ -163,35 +151,23 @@ async function startGame(ctx, r) {
     let chairs = Math.max(1, Math.floor(players.length / 2));
 
     await ctx.reply(
-`🎬 GAME START
+`🎮━━━━━━━━━━━━━━🎮
+      GAME STARTED
+🎮━━━━━━━━━━━━━━🎮
 
-👥 ${players.length}
-🪑 ${chairs}
-🔊 MUSIC ON 🔊`
-    );
+👥 اللاعبين: ${players.length}
+🪑 الكراسي: ${chairs}
 
-    setTimeout(() => round(ctx, r), 3000);
-}
+⚡ استعد!`,
+{
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: "🪑 اقعد", callback_data: "sit" }]
+        ]
+    }
+});
 
-/* ================= ROUND ================= */
-
-async function round(ctx, r) {
-
-    const players = [...r.players.values()];
-
-    let chairs = Math.max(1, Math.floor(players.length / 2));
-
-    await ctx.telegram.sendMessage(
-        ctx.chat.id,
-`🎮 ROUND ${r.round}
-
-👥 PLAYERS: ${players.length}
-🪑 CHAIRS: ${chairs}
-
-⚡ FIGHT!`
-    );
-
-    setTimeout(() => end(ctx, r), 12000);
+    setTimeout(() => end(ctx, r), 15000);
 }
 
 /* ================= END ================= */
@@ -203,39 +179,26 @@ function end(ctx, r) {
 
     losers.forEach(id => r.players.delete(id));
 
-    // 💰 reward
     [...r.players.keys()].forEach(id => {
 
         const u = user(id);
 
-        u.coins += 50;
-        u.xp += 30;
         u.games++;
-
-        if (u.xp >= u.level * 100) {
-            u.level++;
-            u.xp = 0;
-        }
+        u.wins++;
     });
 
     save();
 
-    ctx.telegram.sendMessage(
-        ctx.chat.id,
-        "💀 ROUND OVER"
-    );
+    ctx.reply("💀 انتهت الجولة");
 
     if (r.players.size <= 1) {
 
         const winner = [...r.players.values()][0];
 
-        const w = user([...r.players.keys()][0]);
-
-        w.wins++;
-
-        ctx.telegram.sendMessage(
-            ctx.chat.id,
-`🏆 CHAMPION
+        ctx.reply(
+`🏆━━━━━━━━━━━━━━🏆
+      WINNER
+🏆━━━━━━━━━━━━━━🏆
 
 👑 ${winner}`
         );
@@ -243,9 +206,32 @@ function end(ctx, r) {
         return;
     }
 
-    setTimeout(() => round(ctx, r), 3000);
+    setTimeout(() => startGame(ctx, r), 3000);
 }
+
+/* ================= CALLBACKS ================= */
+
+bot.action('join', (ctx) => {
+
+    const r = room(ctx.chat.id);
+
+    r.players.set(ctx.from.id, ctx.from.first_name);
+
+    ctx.answerCbQuery("🔥 دخلت اللعبة");
+});
+
+bot.action('sit', (ctx) => {
+
+    const r = room(ctx.chat.id);
+
+    r.seated.add(ctx.from.id);
+
+    ctx.answerCbQuery("🪑 قعدت");
+});
+
+bot.action('c1', (ctx) => ctx.answerCbQuery("😂 التحدي الأول مفعل"));
+bot.action('c2', (ctx) => ctx.answerCbQuery("⛔ التحدي الثاني مفعل"));
 
 bot.launch();
 
-console.log("👑 GENESIS BOT RUNNING");
+console.log("🎮 CARD UI BOT RUNNING");
