@@ -1,6 +1,6 @@
 const { Telegraf } = require('telegraf');
 
-const bot = new Telegraf('7941587092:AAEc_oauDfPmy9_RDUH7OpeIKUxi0HGx71U');
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const games = new Map();
 
@@ -16,9 +16,6 @@ const GIFS = {
 
     music:
         'https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif',
-
-    sit:
-        'https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif',
 
     lose:
         'https://media.giphy.com/media/ISOckXUybVfQ4/giphy.gif',
@@ -54,16 +51,17 @@ bot.start(async (ctx) => {
         GIFS.start,
         {
             caption:
-`🎮 اهلا بك في لعبة الكراسي الأسطورية 🪑🔥
+`🎮 اهلا بك في لعبة الكراسي PRO MAX 🪑🔥
 
 📌 الأوامر:
+
 /create → إنشاء لعبة
 /join → دخول اللعبة
-/players → اللاعبين
+/players → عرض اللاعبين
 /end → إنهاء اللعبة
 
-🚀 اكتب:
-كراسي`
+🚀 لبدء اللعبة:
+اكتب "كراسي"`
         }
     );
 });
@@ -88,16 +86,13 @@ bot.command('create', async (ctx) => {
 
     game.players.set(ctx.from.id, userName);
 
-    await ctx.replyWithAnimation(
-        GIFS.start,
-        {
-            caption:
-`╔════ 🎮 CHAIRS GAME 🎮 ════╗
+    await ctx.reply(
+`🎮 تم إنشاء اللعبة بنجاح
 
 👑 المنشئ:
 ➜ ${userName}
 
-👥 عدد اللاعبين:
+👥 اللاعبين:
 ➜ ${game.players.size}
 
 📌 للدخول:
@@ -105,7 +100,6 @@ bot.command('create', async (ctx) => {
 
 🚀 للبدء:
 كراسي`
-        }
     );
 });
 
@@ -129,12 +123,13 @@ bot.command('join', async (ctx) => {
 
     game.players.set(ctx.from.id, userName);
 
-    const list = [...game.players.values()]
+    const list =
+        [...game.players.values()]
         .map(x => `• ${x}`)
         .join('\n');
 
     await ctx.reply(
-`🎉 دخل لاعب جديد!
+`🎉 انضم لاعب جديد
 
 👤 ${userName}
 
@@ -169,7 +164,7 @@ async function startGame(ctx, chatId) {
 `🔥 بدأت اللعبة 🔥
 
 🎵 الموسيقى شغالة...
-⏳ استعدوا للجولة الأولى`
+استعدوا للجولة الأولى`
         }
     );
 
@@ -187,8 +182,10 @@ async function startRound(telegram, game) {
 
     game.seated = new Set();
 
-    const playerCount = game.players.size;
+    const playerCount =
+        game.players.size;
 
+    // 3 يخسروا
     const chairCount =
         Math.max(1, playerCount - 3);
 
@@ -220,36 +217,41 @@ ${playersList}
             }
         );
 
-        const msg = await telegram.sendMessage(
-            game.chatId,
+        const msg =
+            await telegram.sendMessage(
+                game.chatId,
 
-`🪑 اقعد بسرعة قبل الكراسي ما تخلص!`,
+`🪑 اقعد بسرعة قبل نفاد الكراسي!`,
 
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text:
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text:
 `🪑 اقعد (${chairCount})`,
-                                callback_data: 'sit'
-                            }
+                                    callback_data: 'sit'
+                                }
+                            ]
                         ]
-                    ]
+                    }
                 }
-            }
-        );
+            );
 
         game.currentMessageId =
             msg.message_id;
 
         game.state = STATE.ROUND;
 
-        game.roundTimeout = setTimeout(() => {
+        game.roundTimeout =
+            setTimeout(() => {
 
-            endRound(telegram, game);
+                endRound(
+                    telegram,
+                    game
+                );
 
-        }, 15000);
+            }, 15000);
 
     } catch (err) {
 
@@ -264,7 +266,9 @@ async function endRound(telegram, game) {
 
     if (game.roundTimeout) {
 
-        clearTimeout(game.roundTimeout);
+        clearTimeout(
+            game.roundTimeout
+        );
 
         game.roundTimeout = null;
     }
@@ -326,7 +330,7 @@ async function endRound(telegram, game) {
             caption:
 `${loserText}
 
-💀 خرجوا من الجولة!`
+💀 خرجوا من الجولة`
         }
     );
 
@@ -364,7 +368,7 @@ async function endRound(telegram, game) {
 
 ${remaining}
 
-⏳ الجولة القادمة بعد 3 ثواني...`
+⏳ الجولة القادمة بعد 3 ثواني`
         );
 
         setTimeout(() => {
@@ -510,7 +514,9 @@ bot.command('end', async (ctx) => {
 
     games.delete(ctx.chat.id);
 
-    await ctx.reply('🛑 تم إنهاء اللعبة');
+    await ctx.reply(
+`🛑 تم إنهاء اللعبة`
+    );
 });
 
 bot.launch();
