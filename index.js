@@ -3,14 +3,12 @@ const fs = require('fs');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const DB_FILE = './data.json';
-
-let db = fs.existsSync(DB_FILE)
-    ? JSON.parse(fs.readFileSync(DB_FILE))
+let db = fs.existsSync('./data.json')
+    ? JSON.parse(fs.readFileSync('./data.json'))
     : {};
 
 function save() {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    fs.writeFileSync('./data.json', JSON.stringify(db, null, 2));
 }
 
 function user(id, name) {
@@ -22,186 +20,197 @@ function user(id, name) {
             xp: 0,
             level: 1,
             wins: 0,
-            lastDaily: 0
+            games: 0,
+            lastDaily: 0,
+            skill: "normal"
         };
     }
 
     return db[id];
 }
 
-/* ================= ROOMS ================= */
+/* ================= TOURNAMENT SYSTEM ================= */
+
+const tournaments = new Map();
+
+/* ================= ROOM ================= */
 
 const rooms = new Map();
 
-function getRoom(chatId) {
+function room(chatId) {
 
     if (!rooms.has(chatId)) {
-
         rooms.set(chatId, {
             players: new Map(),
             seated: new Set(),
-            round: 0
+            round: 0,
+            msgId: null
         });
     }
 
     return rooms.get(chatId);
 }
 
-/* ================= DAILY ================= */
+/* ================= SKILLS ================= */
 
-bot.command('daily', (ctx) => {
+function randomSkill() {
 
-    const u = user(ctx.from.id, ctx.from.first_name);
+    const skills = ["FAST", "LUCKY", "SHIELD"];
 
-    const now = Date.now();
+    return skills[Math.floor(Math.random() * skills.length)];
+}
 
-    if (now - u.lastDaily < 86400000)
-        return ctx.reply("⏳ COME BACK LATER");
-
-    u.coins += 200;
-    u.lastDaily = now;
-
-    save();
-
-    ctx.reply("🎁 +200 COINS");
-});
-
-/* ================= PROFILE ================= */
-
-bot.command('profile', (ctx) => {
-
-    const u = user(ctx.from.id, ctx.from.first_name);
-
-    ctx.reply(
-`👤 PROFILE
-
-💰 ${u.coins}
-🏆 ${u.wins}
-📊 LEVEL ${u.level}
-⭐ XP ${u.xp}`
-    );
-});
-
-/* ================= LEADERBOARD ================= */
-
-bot.command('top', (ctx) => {
-
-    const top = Object.entries(db)
-        .sort((a, b) => b[1].coins - a[1].coins)
-        .slice(0, 5)
-        .map((u, i) =>
-            `${i + 1}. ${u[1].name} - 💰 ${u[1].coins}`
-        )
-        .join("\n");
-
-    ctx.reply(`🌍 TOP PLAYERS\n\n${top}`);
-});
-
-/* ================= STEAL ================= */
-
-bot.command('steal', (ctx) => {
-
-    const from = user(ctx.from.id);
-
-    const keys = Object.keys(db);
-
-    const targetId = keys[Math.floor(Math.random() * keys.length)];
-
-    const target = db[targetId];
-
-    if (!target || targetId == ctx.from.id)
-        return ctx.reply("❌ FAILED");
-
-    const amount = Math.floor(Math.random() * 70);
-
-    target.coins -= amount;
-    from.coins += amount;
-
-    save();
-
-    ctx.reply(`💣 STOLE ${amount} COINS`);
-});
-
-/* ================= GAME ================= */
+/* ================= JOIN ================= */
 
 bot.hears('كراسي', (ctx) => {
 
-    const room = getRoom(ctx.chat.id);
+    const r = room(ctx.chat.id);
 
-    room.players.set(ctx.from.id, ctx.from.first_name);
+    const u = user(ctx.from.id, ctx.from.first_name);
 
-    // 🧠 AI BOT
-    if (room.players.size < 3) {
-        room.players.set("AI_" + Math.random(), "🤖 BOT");
-    }
+    r.players.set(ctx.from.id, u.name);
 
     ctx.reply(
-`🎮 JOINED
+`🎮 PLAYER JOINED
 
-👥 PLAYERS: ${room.players.size}`
+👤 ${u.name}
+👥 ${r.players.size}`
+    );
+});
+
+/* ================= DAILY QUEST ================= */
+
+bot.hears('مهمة', (ctx) => {
+
+    const u = user(ctx.from.id, ctx.from.first_name);
+
+    ctx.reply(
+`🎯 DAILY QUEST
+
+🎮 العب مباراة → +50 XP
+🏆 فز → +100 COINS`
+    );
+});
+
+/* ================= SHOP ================= */
+
+bot.hears('متجر', (ctx) => {
+
+    ctx.reply(
+`🛒 SHOP
+
+⚡ BOOST (x2 coins)
+🪑 SKIN (chair effects)
+
+اكتب: شراء`
+    );
+});
+
+bot.hears('شراء', (ctx) => {
+
+    const u = user(ctx.from.id, ctx.from.first_name);
+
+    if (u.coins < 100)
+        return ctx.reply("❌ مش معاك كوينز");
+
+    u.coins -= 100;
+    u.skill = randomSkill();
+
+    save();
+
+    ctx.reply(`✨ حصلت على مهارة: ${u.skill}`);
+});
+
+/* ================= TOURNAMENT ================= */
+
+bot.hears('بطولة', (ctx) => {
+
+    const t = tournaments.get(ctx.chat.id) || {
+        players: new Map()
+    };
+
+    tournaments.set(ctx.chat.id, t);
+
+    t.players.set(ctx.from.id, ctx.from.first_name);
+
+    ctx.reply(
+`🏆 TOURNAMENT
+
+👥 ${t.players.size} لاعبين`
     );
 });
 
 /* ================= START ================= */
 
-bot.command('begin', async (ctx) => {
+bot.hears('ابدأ', async (ctx) => {
 
-    const room = getRoom(ctx.chat.id);
+    const r = room(ctx.chat.id);
 
-    if (room.players.size < 2)
-        return ctx.reply("❌ NEED PLAYERS");
+    if (r.players.size < 2)
+        return ctx.reply("❌ محتاج لاعبين");
 
-    startRound(ctx, room);
+    startGame(ctx, r);
 });
 
-/* ================= ROUND ================= */
+/* ================= CINEMATIC GAME ================= */
 
-async function startRound(ctx, room) {
+async function startGame(ctx, r) {
 
-    room.round++;
-    room.seated = new Set();
+    r.seated = new Set();
 
-    let players = [...room.players.values()];
-    let chairs = Math.max(1, players.length - 2);
+    const players = [...r.players.values()];
 
-    const msg = await ctx.reply(
-`🎵 ROUND ${room.round}
+    let chairs = Math.max(1, Math.floor(players.length / 2));
+
+    await ctx.reply(
+`🎬 GAME START
 
 👥 ${players.length}
 🪑 ${chairs}
-
-⚡ GO`,
-        {
-            reply_markup: {
-                inline_keyboard: [[
-                    { text: "🪑 SIT", callback_data: "sit" }
-                ]]
-            }
-        }
+🔊 MUSIC ON 🔊`
     );
 
-    room.msgId = msg.message_id;
-
-    setTimeout(() => endRound(ctx, room), 15000);
+    setTimeout(() => round(ctx, r), 3000);
 }
 
-/* ================= END ROUND ================= */
+/* ================= ROUND ================= */
 
-function endRound(ctx, room) {
+async function round(ctx, r) {
 
-    const losers = [...room.players.keys()]
-        .filter(id => !room.seated.has(id));
+    const players = [...r.players.values()];
 
-    losers.forEach(id => room.players.delete(id));
+    let chairs = Math.max(1, Math.floor(players.length / 2));
 
-    // 💰 reward winners
-    [...room.players.keys()].forEach(id => {
+    await ctx.telegram.sendMessage(
+        ctx.chat.id,
+`🎮 ROUND ${r.round}
+
+👥 PLAYERS: ${players.length}
+🪑 CHAIRS: ${chairs}
+
+⚡ FIGHT!`
+    );
+
+    setTimeout(() => end(ctx, r), 12000);
+}
+
+/* ================= END ================= */
+
+function end(ctx, r) {
+
+    const losers = [...r.players.keys()]
+        .filter(id => !r.seated.has(id));
+
+    losers.forEach(id => r.players.delete(id));
+
+    // 💰 reward
+    [...r.players.keys()].forEach(id => {
 
         const u = user(id);
 
         u.coins += 50;
-        u.xp += 20;
-        u.wins++;
+        u.xp += 30;
+        u.games++;
 
         if (u.xp >= u.level * 100) {
             u.level++;
@@ -211,37 +220,32 @@ function endRound(ctx, room) {
 
     save();
 
-    if (room.players.size <= 1) {
+    ctx.telegram.sendMessage(
+        ctx.chat.id,
+        "💀 ROUND OVER"
+    );
 
-        const winner = [...room.players.values()][0];
+    if (r.players.size <= 1) {
 
-        ctx.reply(
-`🏆 WINNER
+        const winner = [...r.players.values()][0];
 
-👑 ${winner}
+        const w = user([...r.players.keys()][0]);
 
-🔥 GAME OVER`
+        w.wins++;
+
+        ctx.telegram.sendMessage(
+            ctx.chat.id,
+`🏆 CHAMPION
+
+👑 ${winner}`
         );
-
-        rooms.delete(room.chatId);
 
         return;
     }
 
-    setTimeout(() => startRound(ctx, room), 3000);
+    setTimeout(() => round(ctx, r), 3000);
 }
-
-/* ================= SIT ================= */
-
-bot.action('sit', async (ctx) => {
-
-    const room = getRoom(ctx.chat.id);
-
-    room.seated.add(ctx.from.id);
-
-    await ctx.answerCbQuery("🔥 OK");
-});
 
 bot.launch();
 
-console.log("👑 FINAL GOD MODE RUNNING");
+console.log("👑 GENESIS BOT RUNNING");
