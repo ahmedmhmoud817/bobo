@@ -5,334 +5,514 @@ const bot = new Telegraf('7941587092:AAEc_oauDfPmy9_RDUH7OpeIKUxi0HGx71U');
 const games = new Map();
 
 const STATE = {
-  WAITING: 'waiting',
-  PLAYING: 'playing',
-  ROUND: 'round',
+    WAITING: 'waiting',
+    PLAYING: 'playing',
+    ROUND: 'round'
+};
+
+const GIFS = {
+    start:
+        'https://media.giphy.com/media/l0MYC0LajbaPoEADu/giphy.gif',
+
+    music:
+        'https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif',
+
+    sit:
+        'https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif',
+
+    lose:
+        'https://media.giphy.com/media/ISOckXUybVfQ4/giphy.gif',
+
+    win:
+        'https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif'
 };
 
 function createGame(chatId, creatorId, creatorName) {
-  const game = {
-    chatId,
-    creator: { id: creatorId, name: creatorName },
-    players: new Map(),
-    state: STATE.WAITING,
-    round: 0,
-    roundTimeout: null,
-    currentMessageId: null,
-    seated: new Set(),
-  };
 
-  games.set(chatId, game);
-  return game;
+    const game = {
+        chatId,
+        creator: {
+            id: creatorId,
+            name: creatorName
+        },
+        players: new Map(),
+        state: STATE.WAITING,
+        round: 0,
+        seated: new Set(),
+        roundTimeout: null,
+        currentMessageId: null
+    };
+
+    games.set(chatId, game);
+
+    return game;
 }
+
+bot.start(async (ctx) => {
+
+    await ctx.replyWithAnimation(
+        GIFS.start,
+        {
+            caption:
+`🎮 اهلا بك في لعبة الكراسي الأسطورية 🪑🔥
+
+📌 الأوامر:
+/create → إنشاء لعبة
+/join → دخول اللعبة
+/players → اللاعبين
+/end → إنهاء اللعبة
+
+🚀 اكتب:
+كراسي`
+        }
+    );
+});
 
 bot.command('create', async (ctx) => {
 
-  const chatId = ctx.chat.id;
-  const existing = games.get(chatId);
+    const oldGame = games.get(ctx.chat.id);
 
-  if (existing && existing.state !== STATE.WAITING) {
-    return ctx.reply('⚠️ يوجد لعبة جارية بالفعل!');
-  }
+    if (oldGame)
+        return ctx.reply('⚠️ يوجد لعبة بالفعل');
 
-  const userId = ctx.from.id;
-  const userName = ctx.from.first_name || ctx.from.username || 'لاعب';
+    const userName =
+        ctx.from.first_name ||
+        ctx.from.username ||
+        'Player';
 
-  const game = createGame(chatId, userId, userName);
+    const game = createGame(
+        ctx.chat.id,
+        ctx.from.id,
+        userName
+    );
 
-  game.players.set(userId, userName);
+    game.players.set(ctx.from.id, userName);
 
-  await ctx.reply(
-    `🎮 تم إنشاء لعبة Chairs Game!\n\n` +
-    `👥 اللاعبون (${game.players.size})\n` +
-    `• ${userName}\n\n` +
-    `📌 للدخول اكتب /join\n` +
-    `▶️ للبدء اكتب كراسي`
-  );
+    await ctx.replyWithAnimation(
+        GIFS.start,
+        {
+            caption:
+`╔════ 🎮 CHAIRS GAME 🎮 ════╗
+
+👑 المنشئ:
+➜ ${userName}
+
+👥 عدد اللاعبين:
+➜ ${game.players.size}
+
+📌 للدخول:
+/join
+
+🚀 للبدء:
+كراسي`
+        }
+    );
 });
 
 bot.command('join', async (ctx) => {
 
-  const chatId = ctx.chat.id;
-  const game = games.get(chatId);
+    const game = games.get(ctx.chat.id);
 
-  if (!game)
-    return ctx.reply('❌ لا توجد لعبة حالياً');
+    if (!game)
+        return ctx.reply('❌ لا توجد لعبة');
 
-  if (game.state !== STATE.WAITING)
-    return ctx.reply('⚠️ اللعبة بدأت بالفعل');
+    if (game.state !== STATE.WAITING)
+        return ctx.reply('⚠️ اللعبة بدأت بالفعل');
 
-  const userId = ctx.from.id;
-  const userName = ctx.from.first_name || ctx.from.username || 'لاعب';
+    const userName =
+        ctx.from.first_name ||
+        ctx.from.username ||
+        'Player';
 
-  if (game.players.has(userId))
-    return ctx.reply('✅ انت داخل بالفعل');
+    if (game.players.has(ctx.from.id))
+        return ctx.reply('✅ انت داخل بالفعل');
 
-  game.players.set(userId, userName);
+    game.players.set(ctx.from.id, userName);
 
-  const playerList = [...game.players.values()]
-    .map((n) => `• ${n}`)
-    .join('\n');
+    const list = [...game.players.values()]
+        .map(x => `• ${x}`)
+        .join('\n');
 
-  await ctx.reply(
-    `✅ انضم ${userName}\n\n` +
-    `👥 اللاعبون (${game.players.size})\n${playerList}`
-  );
+    await ctx.reply(
+`🎉 دخل لاعب جديد!
+
+👤 ${userName}
+
+👥 العدد الحالي:
+${game.players.size}
+
+━━━━━━━━━━━━━━
+${list}
+━━━━━━━━━━━━━━`
+    );
 });
 
 async function startGame(ctx, chatId) {
 
-  const game = games.get(chatId);
+    const game = games.get(chatId);
 
-  if (!game)
-    return ctx.reply('❌ لا توجد لعبة');
+    if (!game)
+        return ctx.reply('❌ لا توجد لعبة');
 
-  if (game.state !== STATE.WAITING)
-    return ctx.reply('⚠️ اللعبة بدأت بالفعل');
+    if (game.state !== STATE.WAITING)
+        return ctx.reply('⚠️ اللعبة بدأت بالفعل');
 
-  if (game.players.size < 3)
-    return ctx.reply('❌ تحتاج 3 لاعبين على الأقل');
+    if (game.players.size < 3)
+        return ctx.reply('⚠️ لازم 3 لاعبين على الأقل');
 
-  game.state = STATE.PLAYING;
+    game.state = STATE.PLAYING;
 
-  await ctx.reply(
-    `🎮 بدأت اللعبة!\n\n` +
-    `⏳ الجولة الأولى بعد 3 ثواني...`
-  );
+    await ctx.replyWithAnimation(
+        GIFS.music,
+        {
+            caption:
+`🔥 بدأت اللعبة 🔥
 
-  setTimeout(() => startRound(ctx.telegram, game), 3000);
+🎵 الموسيقى شغالة...
+⏳ استعدوا للجولة الأولى`
+        }
+    );
+
+    setTimeout(() => {
+        startRound(ctx.telegram, game);
+    }, 4000);
 }
 
 async function startRound(telegram, game) {
 
-  if (!games.has(game.chatId))
-    return;
+    if (!games.has(game.chatId))
+        return;
 
-  game.round++;
-  game.seated = new Set();
+    game.round++;
 
-  const playerCount = game.players.size;
+    game.seated = new Set();
 
-  // هنا التعديل
-  const chairCount = Math.max(1, playerCount - 3);
+    const playerCount = game.players.size;
 
-  const playerList = [...game.players.values()]
-    .map((n) => `• ${n}`)
-    .join('\n');
+    const chairCount =
+        Math.max(1, playerCount - 3);
 
-  try {
+    const playersList =
+        [...game.players.values()]
+        .map(x => `• ${x}`)
+        .join('\n');
 
-    const msg = await telegram.sendMessage(
-      game.chatId,
+    try {
 
-      `🎵 الجولة ${game.round}\n\n` +
-      `👥 اللاعبون (${playerCount})\n${playerList}\n\n` +
-      `🪑 عدد الكراسي: ${chairCount}\n\n` +
-      `⏱️ اضغط بسرعة خلال 20 ثانية`,
+        await telegram.sendAnimation(
+            game.chatId,
+            GIFS.music,
+            {
+                caption:
+`🎵 الجولة ${game.round}
 
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: `🪑 اقعد (${chairCount})`,
-                callback_data: 'sit'
-              }
+👥 اللاعبين:
+${playerCount}
+
+🪑 الكراسي:
+${chairCount}
+
+━━━━━━━━━━━━━━
+${playersList}
+━━━━━━━━━━━━━━
+
+⚡ اضغط بسرعة!`
+            }
+        );
+
+        const msg = await telegram.sendMessage(
+            game.chatId,
+
+`🪑 اقعد بسرعة قبل الكراسي ما تخلص!`,
+
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text:
+`🪑 اقعد (${chairCount})`,
+                                callback_data: 'sit'
+                            }
+                        ]
+                    ]
+                }
+            }
+        );
+
+        game.currentMessageId =
+            msg.message_id;
+
+        game.state = STATE.ROUND;
+
+        game.roundTimeout = setTimeout(() => {
+
+            endRound(telegram, game);
+
+        }, 15000);
+
+    } catch (err) {
+
+        console.log(err.message);
+    }
+}
+
+async function endRound(telegram, game) {
+
+    if (!games.has(game.chatId))
+        return;
+
+    if (game.roundTimeout) {
+
+        clearTimeout(game.roundTimeout);
+
+        game.roundTimeout = null;
+    }
+
+    game.state = STATE.PLAYING;
+
+    let losers =
+        [...game.players.keys()]
+        .filter(id =>
+            !game.seated.has(id)
+        );
+
+    if (losers.length === 0) {
+
+        const all =
+            [...game.players.keys()];
+
+        losers = [
+            all[
+                Math.floor(
+                    Math.random() * all.length
+                )
             ]
-          ]
+        ];
+    }
+
+    const loserNames =
+        losers.map(id =>
+            game.players.get(id)
+        );
+
+    for (const id of losers) {
+
+        game.players.delete(id);
+    }
+
+    try {
+
+        await telegram.editMessageReplyMarkup(
+            game.chatId,
+            game.currentMessageId,
+            undefined,
+            {
+                inline_keyboard: []
+            }
+        );
+
+    } catch (_) {}
+
+    const loserText =
+        loserNames
+        .map(x => `❌ ${x}`)
+        .join('\n');
+
+    await telegram.sendAnimation(
+        game.chatId,
+        GIFS.lose,
+        {
+            caption:
+`${loserText}
+
+💀 خرجوا من الجولة!`
         }
-      }
     );
 
-    game.currentMessageId = msg.message_id;
+    if (game.players.size <= 1) {
 
-    game.state = STATE.ROUND;
+        const winner =
+            [...game.players.values()][0];
 
-    game.roundTimeout = setTimeout(() => {
-      endRound(telegram, game, true);
-    }, 20000);
+        await telegram.sendAnimation(
+            game.chatId,
+            GIFS.win,
+            {
+                caption:
+`🏆 الفائز الأسطوري 🏆
 
-  } catch (err) {
+👑 ${winner}
 
-    console.log(err.message);
-  }
+🎉 مبرووووك 🔥`
+            }
+        );
+
+        games.delete(game.chatId);
+
+    } else {
+
+        const remaining =
+            [...game.players.values()]
+            .map(x => `• ${x}`)
+            .join('\n');
+
+        await telegram.sendMessage(
+            game.chatId,
+
+`👥 المتبقين:
+
+${remaining}
+
+⏳ الجولة القادمة بعد 3 ثواني...`
+        );
+
+        setTimeout(() => {
+
+            startRound(
+                telegram,
+                game
+            );
+
+        }, 3000);
+    }
 }
-
-async function endRound(telegram, game, timeout = false) {
-
-  if (!games.has(game.chatId))
-    return;
-
-  if (game.roundTimeout) {
-    clearTimeout(game.roundTimeout);
-    game.roundTimeout = null;
-  }
-
-  game.state = STATE.PLAYING;
-
-  let losers = [...game.players.keys()]
-    .filter((id) => !game.seated.has(id));
-
-  if (losers.length === 0) {
-
-    const allPlayers = [...game.players.keys()];
-
-    losers = [
-      allPlayers[Math.floor(Math.random() * allPlayers.length)]
-    ];
-  }
-
-  const loserNames = losers.map((id) =>
-    game.players.get(id)
-  );
-
-  for (const id of losers) {
-    game.players.delete(id);
-  }
-
-  try {
-
-    await telegram.editMessageReplyMarkup(
-      game.chatId,
-      game.currentMessageId,
-      undefined,
-      { inline_keyboard: [] }
-    );
-
-  } catch (_) {}
-
-  const loserText = loserNames
-    .map((n) => `❌ ${n}`)
-    .join('\n');
-
-  if (game.players.size <= 1) {
-
-    const winner = [...game.players.values()][0];
-
-    await telegram.sendMessage(
-      game.chatId,
-
-      `${loserText}\n\n` +
-      `🏆 الفائز هو ${winner} 🎉`
-    );
-
-    games.delete(game.chatId);
-
-  } else {
-
-    const remaining = [...game.players.values()]
-      .map((n) => `• ${n}`)
-      .join('\n');
-
-    await telegram.sendMessage(
-      game.chatId,
-
-      `${loserText}\n\n` +
-      `👥 المتبقين (${game.players.size})\n${remaining}\n\n` +
-      `⏳ الجولة التالية بعد 3 ثواني`
-    );
-
-    setTimeout(() => {
-      startRound(telegram, game);
-    }, 3000);
-  }
-}
-
-bot.command('begin', (ctx) => {
-  startGame(ctx, ctx.chat.id);
-});
 
 bot.hears('كراسي', (ctx) => {
-  startGame(ctx, ctx.chat.id);
+
+    startGame(
+        ctx,
+        ctx.chat.id
+    );
+});
+
+bot.command('begin', (ctx) => {
+
+    startGame(
+        ctx,
+        ctx.chat.id
+    );
 });
 
 bot.action('sit', async (ctx) => {
 
-  await ctx.answerCbQuery();
+    await ctx.answerCbQuery();
 
-  const chatId = ctx.chat.id;
+    const game =
+        games.get(ctx.chat.id);
 
-  const game = games.get(chatId);
+    if (!game)
+        return;
 
-  if (!game || game.state !== STATE.ROUND)
-    return;
+    if (game.state !== STATE.ROUND)
+        return;
 
-  const userId = ctx.from.id;
+    if (!game.players.has(ctx.from.id))
+        return;
 
-  if (!game.players.has(userId))
-    return ctx.answerCbQuery('❌ انت لست داخل اللعبة');
+    if (game.seated.has(ctx.from.id))
+        return ctx.answerCbQuery(
+            '✅ انت قاعد بالفعل'
+        );
 
-  if (game.seated.has(userId))
-    return ctx.answerCbQuery('✅ انت قاعد بالفعل');
+    const chairCount =
+        Math.max(
+            1,
+            game.players.size - 3
+        );
 
-  // هنا التعديل
-  const chairCount = Math.max(1, game.players.size - 3);
+    if (game.seated.size >= chairCount)
+        return ctx.answerCbQuery(
+            '❌ الكراسي خلصت'
+        );
 
-  if (game.seated.size >= chairCount)
-    return ctx.answerCbQuery('❌ لا توجد كراسي متبقية');
+    game.seated.add(ctx.from.id);
 
-  game.seated.add(userId);
+    const remaining =
+        chairCount -
+        game.seated.size;
 
-  const remaining = chairCount - game.seated.size;
+    try {
 
-  try {
+        await ctx.answerCbQuery(
+            remaining > 0
+                ? `🔥 قعدت! باقي ${remaining}`
+                : '🔥 أخذت آخر كرسي!'
+        );
 
-    await ctx.answerCbQuery(
-      remaining > 0
-        ? `✅ قعدت! متبقي ${remaining}`
-        : '✅ اخدت آخر كرسي!'
+    } catch (_) {}
+
+    try {
+
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: [
+                [
+                    {
+                        text:
+`🪑 اقعد (${remaining})`,
+                        callback_data: 'sit'
+                    }
+                ]
+            ]
+        });
+
+    } catch (_) {}
+
+    if (remaining <= 0) {
+
+        try {
+
+            await ctx.editMessageReplyMarkup({
+                inline_keyboard: []
+            });
+
+        } catch (_) {}
+
+        await endRound(
+            ctx.telegram,
+            game
+        );
+    }
+});
+
+bot.command('players', async (ctx) => {
+
+    const game =
+        games.get(ctx.chat.id);
+
+    if (!game)
+        return ctx.reply('❌ لا توجد لعبة');
+
+    const list =
+        [...game.players.values()]
+        .map(x => `• ${x}`)
+        .join('\n');
+
+    await ctx.reply(
+`👥 اللاعبون الحاليون (${game.players.size})
+
+━━━━━━━━━━━━━━
+${list}
+━━━━━━━━━━━━━━`
     );
-
-  } catch (_) {}
-
-  if (remaining > 0) {
-
-    try {
-
-      await ctx.editMessageReplyMarkup({
-        inline_keyboard: [
-          [
-            {
-              text: `🪑 اقعد (${remaining})`,
-              callback_data: 'sit'
-            }
-          ]
-        ]
-      });
-
-    } catch (_) {}
-
-  } else {
-
-    try {
-
-      await ctx.editMessageReplyMarkup({
-        inline_keyboard: []
-      });
-
-    } catch (_) {}
-
-    await endRound(ctx.telegram, game);
-  }
 });
 
 bot.command('end', async (ctx) => {
 
-  const chatId = ctx.chat.id;
+    const game =
+        games.get(ctx.chat.id);
 
-  const game = games.get(chatId);
+    if (!game)
+        return ctx.reply('❌ لا توجد لعبة');
 
-  if (!game)
-    return ctx.reply('❌ لا توجد لعبة');
+    if (game.roundTimeout)
+        clearTimeout(game.roundTimeout);
 
-  if (game.roundTimeout)
-    clearTimeout(game.roundTimeout);
+    games.delete(ctx.chat.id);
 
-  games.delete(chatId);
-
-  await ctx.reply('🛑 تم إنهاء اللعبة');
+    await ctx.reply('🛑 تم إنهاء اللعبة');
 });
 
 bot.launch();
 
-console.log('🤖 Chairs Game Bot يعمل الآن...');
+console.log('🤖 PRO MAX Chairs Game Started');
